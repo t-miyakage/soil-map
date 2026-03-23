@@ -96,7 +96,12 @@
     font-size: 11px; font-weight: 600; margin-top: 4px;
   }
 
-  .legend-container { margin-top: 8px; max-height: 220px; overflow-y: auto; }
+  .legend-container { margin-top: 8px; max-height: 300px; overflow-y: auto; }
+  .legend-container img.wms-legend-img {
+    display: block; max-width: 100%; border-radius: 6px;
+    background: #fff; padding: 4px;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
   .legend-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
   .legend-color {
     width: 16px; height: 16px; border-radius: 3px;
@@ -109,6 +114,21 @@
   .legend-gradient-labels {
     display: flex; justify-content: space-between; font-size: 11px; color: #aaa;
   }
+
+  /* Soil labels on map */
+  .soil-map-label {
+    background: rgba(0, 0, 0, 0.55); color: rgba(255,255,255,0.85);
+    padding: 2px 6px; border-radius: 3px; font-size: 11px;
+    white-space: nowrap; pointer-events: none;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  .soil-label-toggle {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; margin: 6px 0; border-radius: 6px;
+    background: rgba(255,255,255,0.05); font-size: 12px; color: #bbb;
+  }
+  .soil-label-toggle input { accent-color: #64ffda; }
 
   .status-bar {
     position: absolute; bottom: 12px; left: 12px; z-index: 1000;
@@ -192,6 +212,10 @@
     <span style="font-size:12px; color:#888;" id="ui_opacity">透過度</span>
     <input type="range" class="opacity-slider" id="soilOpacity" min="0" max="100" value="60" style="flex:1">
   </div>
+  <div class="soil-label-toggle">
+    <input type="checkbox" id="soilLabelToggle">
+    <label for="soilLabelToggle" id="ui_soilLabel" style="cursor:pointer;">クリックで土壌名をマップに表示</label>
+  </div>
 
   <!-- Soil Info -->
   <div class="soil-info" id="soilInfo">
@@ -255,6 +279,8 @@ const I18N = {
       '< 4.5 — 強酸性', '4.5–5.5 — 酸性', '5.5–6.5 — 弱酸性',
       '6.5–7.5 — 中性', '7.5–8.5 — 弱アルカリ性', '> 8.5 — アルカリ性'
     ],
+    soilLabel: 'クリックで土壌名をマップに表示',
+    clearLabels: 'ラベルをクリア',
     // Basemap options
     optOsm: 'OpenStreetMap（標準地図）', optSat: 'Esri 衛星写真',
     optTopo: 'OpenTopoMap（地形図）', optDark: 'CartoDB ダークマップ',
@@ -311,6 +337,8 @@ const I18N = {
       '< 4.5 — Strongly acidic', '4.5–5.5 — Acidic', '5.5–6.5 — Slightly acidic',
       '6.5–7.5 — Neutral', '7.5–8.5 — Slightly alkaline', '> 8.5 — Alkaline'
     ],
+    soilLabel: 'Click map to show soil names',
+    clearLabels: 'Clear labels',
     optOsm: 'OpenStreetMap (Standard)', optSat: 'Esri Satellite',
     optTopo: 'OpenTopoMap (Terrain)', optDark: 'CartoDB Dark',
     wrb: {
@@ -365,6 +393,8 @@ const I18N = {
       '< 4.5 — Axit mạnh', '4.5–5.5 — Axit', '5.5–6.5 — Hơi axit',
       '6.5–7.5 — Trung tính', '7.5–8.5 — Hơi kiềm', '> 8.5 — Kiềm'
     ],
+    soilLabel: 'Nhấp bản đồ để hiện tên đất',
+    clearLabels: 'Xóa nhãn',
     optOsm: 'OpenStreetMap (Tiêu chuẩn)', optSat: 'Esri Ảnh vệ tinh',
     optTopo: 'OpenTopoMap (Địa hình)', optDark: 'CartoDB Tối',
     wrb: {
@@ -391,38 +421,38 @@ let currentLang = 'ja';
 function t(key) { return I18N[currentLang][key] || I18N['en'][key] || key; }
 function tWrb(code) { return (I18N[currentLang].wrb && I18N[currentLang].wrb[code]) || code; }
 
-// ---- WRB base data — colors matched to ISRIC SoilGrids official legend ----
+// ---- WRB base data — colors extracted from ISRIC SoilGrids GetLegendGraphic ----
 const WRB_CODES = [
-  { code: 'AC', name: 'Acrisols',      color: '#e0941a' },
-  { code: 'AB', name: 'Albeluvisols',  color: '#6b8e23' },
-  { code: 'AL', name: 'Alisols',       color: '#d44040' },
-  { code: 'AN', name: 'Andosols',      color: '#c83232' },
-  { code: 'AR', name: 'Arenosols',     color: '#f5f0e0' },
-  { code: 'CL', name: 'Calcisols',     color: '#f0e830' },
-  { code: 'CM', name: 'Cambisols',     color: '#e8b040' },
-  { code: 'CH', name: 'Chernozems',    color: '#a08830' },
-  { code: 'CR', name: 'Cryosols',      color: '#4a3880' },
-  { code: 'DU', name: 'Durisols',      color: '#f0e8c8' },
-  { code: 'FR', name: 'Ferralsols',    color: '#e87020' },
-  { code: 'FL', name: 'Fluvisols',     color: '#2878d0' },
-  { code: 'GL', name: 'Gleysols',      color: '#78b8c8' },
-  { code: 'GY', name: 'Gypsisols',     color: '#e8d850' },
-  { code: 'HS', name: 'Histosols',     color: '#603850' },
-  { code: 'KS', name: 'Kastanozems',   color: '#a87898' },
-  { code: 'LP', name: 'Leptosols',     color: '#b0b0b0' },
-  { code: 'LX', name: 'Lixisols',      color: '#f0c0d0' },
-  { code: 'LV', name: 'Luvisols',      color: '#f0a0a0' },
-  { code: 'NT', name: 'Nitisols',      color: '#f0a8a0' },
-  { code: 'PH', name: 'Phaeozems',     color: '#704028' },
-  { code: 'PL', name: 'Planosols',     color: '#d89838' },
-  { code: 'PT', name: 'Plinthosols',   color: '#601848' },
-  { code: 'PZ', name: 'Podzols',       color: '#18a050' },
-  { code: 'RG', name: 'Regosols',      color: '#f0c898' },
-  { code: 'SC', name: 'Solonchaks',    color: '#e038a0' },
-  { code: 'SN', name: 'Solonetz',      color: '#c050c0' },
-  { code: 'ST', name: 'Stagnosols',    color: '#88d0e8' },
-  { code: 'UM', name: 'Umbrisols',     color: '#48b8b0' },
-  { code: 'VR', name: 'Vertisols',     color: '#883868' },
+  { code: 'AC', name: 'Acrisols',      color: '#f7991d' },
+  { code: 'AB', name: 'Albeluvisols',  color: '#9b9d57' },
+  { code: 'AL', name: 'Alisols',       color: '#faf7c0' },
+  { code: 'AN', name: 'Andosols',      color: '#ed3a33' },
+  { code: 'AR', name: 'Arenosols',     color: '#f7d8ac' },
+  { code: 'CL', name: 'Calcisols',     color: '#ffee00' },
+  { code: 'CM', name: 'Cambisols',     color: '#fecd67' },
+  { code: 'CH', name: 'Chernozems',    color: '#e2c837' },
+  { code: 'CR', name: 'Cryosols',      color: '#756a92' },
+  { code: 'DU', name: 'Durisols',      color: '#efe6bf' },
+  { code: 'FR', name: 'Ferralsols',    color: '#f6872d' },
+  { code: 'FL', name: 'Fluvisols',     color: '#01b0ef' },
+  { code: 'GL', name: 'Gleysols',      color: '#9291b9' },
+  { code: 'GY', name: 'Gypsisols',     color: '#fbf6a5' },
+  { code: 'HS', name: 'Histosols',     color: '#8b898a' },
+  { code: 'KS', name: 'Kastanozems',   color: '#c99580' },
+  { code: 'LP', name: 'Leptosols',     color: '#d5d6d8' },
+  { code: 'LX', name: 'Lixisols',      color: '#f9bdbf' },
+  { code: 'LV', name: 'Luvisols',      color: '#f48385' },
+  { code: 'NT', name: 'Nitisols',      color: '#f7a082' },
+  { code: 'PH', name: 'Phaeozems',     color: '#ba6850' },
+  { code: 'PL', name: 'Planosols',     color: '#f59354' },
+  { code: 'PT', name: 'Plinthosols',   color: '#6f0e41' },
+  { code: 'PZ', name: 'Podzols',       color: '#0daf63' },
+  { code: 'RG', name: 'Regosols',      color: '#ffe2ae' },
+  { code: 'SC', name: 'Solonchaks',    color: '#ed3994' },
+  { code: 'SN', name: 'Solonetz',      color: '#f4cde2' },
+  { code: 'ST', name: 'Stagnosols',    color: '#40c1eb' },
+  { code: 'UM', name: 'Umbrisols',     color: '#618f82' },
+  { code: 'VR', name: 'Vertisols',     color: '#9e567c' },
 ];
 
 const PH_COLORS = ['#d73027','#f46d43','#fdae61','#fee08b','#d9ef8b','#1a9850'];
@@ -487,6 +517,7 @@ function applyLanguage() {
   document.getElementById('opt_sat').textContent = t('optSat');
   document.getElementById('opt_topo').textContent = t('optTopo');
   document.getElementById('opt_dark').textContent = t('optDark');
+  document.getElementById('ui_soilLabel').textContent = t('soilLabel');
   document.title = t('title');
   renderLegend(activeSoilKey);
 }
@@ -576,81 +607,7 @@ map.on('mousemove', (e) => {
     `${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
 });
 
-// ============================================================
-// Map Click → Soil Info
-// ============================================================
-map.on('click', async (e) => {
-  const { lat, lng } = e.latlng;
-  const soilInfoEl = document.getElementById('soilInfo');
-  const soilNameEl = document.getElementById('soilName');
-  const soilDetailEl = document.getElementById('soilDetail');
-
-  soilNameEl.textContent = t('loading');
-  soilDetailEl.textContent = '';
-  soilInfoEl.classList.add('visible');
-
-  try {
-    const size = map.getSize();
-    const bounds = map.getBounds();
-    const sw = bounds.getSouthWest();
-    const ne = bounds.getNorthEast();
-    const point = map.latLngToContainerPoint(e.latlng);
-
-    const cfg = {
-      wrb: { url: 'https://maps.isric.org/mapserv?map=/map/wrb.map', layer: 'MostProbable' },
-      ph:  { url: 'https://maps.isric.org/mapserv?map=/map/phh2o.map', layer: 'phh2o_0-5cm_mean' }
-    }[activeSoilKey];
-
-    const params = new URLSearchParams({
-      SERVICE: 'WMS', VERSION: '1.1.1', REQUEST: 'GetFeatureInfo',
-      LAYERS: cfg.layer, QUERY_LAYERS: cfg.layer,
-      INFO_FORMAT: 'application/json', SRS: 'EPSG:4326',
-      WIDTH: size.x, HEIGHT: size.y,
-      BBOX: `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`,
-      X: Math.round(point.x), Y: Math.round(point.y)
-    });
-
-    const resp = await fetch(`${cfg.url}&${params.toString()}`);
-    if (!resp.ok) throw new Error('WMS error');
-    const data = await resp.json();
-
-    if (data.features && data.features.length > 0) {
-      const props = data.features[0].properties;
-      const value = props.value || props[cfg.layer] || Object.values(props)[0];
-
-      if (activeSoilKey === 'wrb') {
-        const cls = WRB_CODES.find(c =>
-          String(value).toUpperCase().includes(c.code) ||
-          String(value).toLowerCase().includes(c.name.toLowerCase())
-        );
-        if (cls) {
-          soilNameEl.textContent = tWrb(cls.code);
-          soilDetailEl.innerHTML = `${t('wrbPrefix')}: <strong>${cls.name} (${cls.code})</strong><br>${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
-        } else {
-          soilNameEl.textContent = `${t('soilClassValue')}: ${value}`;
-          soilDetailEl.innerHTML = `${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
-        }
-      } else {
-        const phVal = (Number(value) / 10).toFixed(1);
-        let desc = '';
-        if (phVal < 4.5) desc = t('phStrongAcid');
-        else if (phVal < 5.5) desc = t('phAcid');
-        else if (phVal < 6.5) desc = t('phWeakAcid');
-        else if (phVal < 7.5) desc = t('phNeutral');
-        else if (phVal < 8.5) desc = t('phWeakAlk');
-        else desc = t('phAlk');
-        soilNameEl.textContent = `pH ${phVal} (${desc})`;
-        soilDetailEl.innerHTML = `${t('depth')}<br>${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
-      }
-    } else {
-      soilNameEl.textContent = t('noData');
-      soilDetailEl.textContent = `${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
-    }
-  } catch (err) {
-    soilNameEl.textContent = t('noSoil');
-    soilDetailEl.innerHTML = `${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E<br>${t('checkLegend')}`;
-  }
-});
+// Map click handler is defined later (combined with soil label placement)
 
 // ============================================================
 // KML — boundary line + name label on map
@@ -797,6 +754,113 @@ document.getElementById('clearKml').addEventListener('click', () => {
   document.getElementById('kmlInfo').classList.remove('visible');
   kmlInput.value = '';
   map.setView([16.0, 107.5], 6);
+});
+
+// ============================================================
+// Soil labels on map — click to place label at point
+// ============================================================
+let soilMapLabels = [];
+let soilLabelMode = false;
+
+document.getElementById('soilLabelToggle').addEventListener('change', (e) => {
+  soilLabelMode = e.target.checked;
+  if (!soilLabelMode) {
+    soilMapLabels.forEach(l => map.removeLayer(l));
+    soilMapLabels = [];
+  }
+});
+
+map.on('click', async (e) => {
+  const { lat, lng } = e.latlng;
+  const soilInfoEl = document.getElementById('soilInfo');
+  const soilNameEl = document.getElementById('soilName');
+  const soilDetailEl = document.getElementById('soilDetail');
+
+  soilNameEl.textContent = t('loading');
+  soilDetailEl.textContent = '';
+  soilInfoEl.classList.add('visible');
+
+  try {
+    const size = map.getSize();
+    const bounds = map.getBounds();
+    const sw = bounds.getSouthWest();
+    const ne = bounds.getNorthEast();
+    const point = map.latLngToContainerPoint(e.latlng);
+
+    const cfg = {
+      wrb: { url: 'https://maps.isric.org/mapserv?map=/map/wrb.map', layer: 'MostProbable' },
+      ph:  { url: 'https://maps.isric.org/mapserv?map=/map/phh2o.map', layer: 'phh2o_0-5cm_mean' }
+    }[activeSoilKey];
+
+    const params = new URLSearchParams({
+      SERVICE: 'WMS', VERSION: '1.1.1', REQUEST: 'GetFeatureInfo',
+      LAYERS: cfg.layer, QUERY_LAYERS: cfg.layer,
+      INFO_FORMAT: 'application/json', SRS: 'EPSG:4326',
+      WIDTH: size.x, HEIGHT: size.y,
+      BBOX: `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`,
+      X: Math.round(point.x), Y: Math.round(point.y)
+    });
+
+    const resp = await fetch(`${cfg.url}&${params.toString()}`);
+    if (!resp.ok) throw new Error('WMS error');
+    const data = await resp.json();
+
+    if (data.features && data.features.length > 0) {
+      const props = data.features[0].properties;
+      const value = props.value || props[cfg.layer] || Object.values(props)[0];
+      let labelText = '';
+
+      if (activeSoilKey === 'wrb') {
+        const cls = WRB_CODES.find(c =>
+          String(value).toUpperCase().includes(c.code) ||
+          String(value).toLowerCase().includes(c.name.toLowerCase())
+        );
+        if (cls) {
+          soilNameEl.textContent = tWrb(cls.code);
+          soilDetailEl.innerHTML = `${t('wrbPrefix')}: <strong>${cls.name} (${cls.code})</strong><br>${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
+          labelText = cls.code;
+        } else {
+          soilNameEl.textContent = `${t('soilClassValue')}: ${value}`;
+          soilDetailEl.innerHTML = `${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
+          labelText = String(value);
+        }
+      } else {
+        const phVal = (Number(value) / 10).toFixed(1);
+        let desc = '';
+        if (phVal < 4.5) desc = t('phStrongAcid');
+        else if (phVal < 5.5) desc = t('phAcid');
+        else if (phVal < 6.5) desc = t('phWeakAcid');
+        else if (phVal < 7.5) desc = t('phNeutral');
+        else if (phVal < 8.5) desc = t('phWeakAlk');
+        else desc = t('phAlk');
+        soilNameEl.textContent = `pH ${phVal} (${desc})`;
+        soilDetailEl.innerHTML = `${t('depth')}<br>${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
+        labelText = `pH ${phVal}`;
+      }
+
+      // Place label on map if label mode is on
+      if (soilLabelMode && labelText) {
+        const marker = L.marker([lat, lng], {
+          icon: L.divIcon({
+            className: '',
+            html: `<div class="soil-map-label">${labelText}</div>`,
+            iconSize: null,
+            iconAnchor: [0, 12]
+          }),
+          interactive: false,
+          zIndexOffset: 500
+        }).addTo(map);
+        soilMapLabels.push(marker);
+      }
+
+    } else {
+      soilNameEl.textContent = t('noData');
+      soilDetailEl.textContent = `${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
+    }
+  } catch (err) {
+    soilNameEl.textContent = t('noSoil');
+    soilDetailEl.innerHTML = `${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E<br>${t('checkLegend')}`;
+  }
 });
 </script>
 </body>
