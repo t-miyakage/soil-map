@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vietnam Soil Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; }
+  #map { width: 100%; height: 100vh; }
+
+  .control-panel {
+    position: absolute; top: 12px; right: 12px; z-index: 1000;
+    background: rgba(26, 26, 46, 0.95); border-radius: 12px;
+    padding: 16px; width: 320px; max-height: calc(100vh - 24px);
+    overflow-y: auto; box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .control-panel h2 {
+    font-size: 16px; margin-bottom: 12px; color: #64ffda;
+    border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;
+  }
+  .control-panel h3 {
+    font-size: 13px; margin: 12px 0 6px; color: #aaa; text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* Language switcher */
+  .lang-switcher {
+    display: flex; gap: 4px; margin-bottom: 12px;
+  }
+  .lang-btn {
+    flex: 1; padding: 5px 0; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.05); color: #aaa; font-size: 12px;
+    cursor: pointer; text-align: center; transition: all 0.2s;
+  }
+  .lang-btn.active {
+    background: rgba(100,255,218,0.15); border-color: rgba(100,255,218,0.4);
+    color: #64ffda; font-weight: 600;
+  }
+  .lang-btn:hover { background: rgba(255,255,255,0.1); }
+
+  .upload-area {
+    border: 2px dashed rgba(100, 255, 218, 0.3); border-radius: 8px;
+    padding: 20px; text-align: center; cursor: pointer;
+    transition: all 0.3s; margin-bottom: 12px;
+  }
+  .upload-area:hover, .upload-area.dragover {
+    border-color: #64ffda; background: rgba(100, 255, 218, 0.05);
+  }
+  .upload-area .icon { font-size: 32px; margin-bottom: 8px; }
+  .upload-area p { font-size: 13px; color: #999; }
+  .upload-area input { display: none; }
+
+  .select-box {
+    width: 100%; padding: 6px 8px; border-radius: 6px;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+    color: #eee; font-size: 13px; margin-bottom: 4px; cursor: pointer;
+  }
+  .select-box option { background: #1a1a2e; color: #eee; }
+
+  .layer-radio {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px; margin: 4px 0; border-radius: 6px;
+    background: rgba(255,255,255,0.05); cursor: pointer; transition: background 0.2s;
+  }
+  .layer-radio:hover { background: rgba(255,255,255,0.1); }
+  .layer-radio.active { background: rgba(100, 255, 218, 0.1); border: 1px solid rgba(100,255,218,0.3); }
+  .layer-radio input[type="radio"] { accent-color: #64ffda; }
+  .layer-radio label { font-size: 13px; cursor: pointer; flex: 1; }
+
+  .opacity-slider { width: 100%; margin: 4px 0 8px; accent-color: #64ffda; }
+
+  .soil-info {
+    background: rgba(100, 255, 218, 0.08); border-radius: 8px;
+    padding: 12px; margin-top: 12px; font-size: 13px;
+    border: 1px solid rgba(100, 255, 218, 0.2); display: none;
+  }
+  .soil-info.visible { display: block; }
+  .soil-info .soil-name { font-size: 15px; font-weight: 600; color: #64ffda; margin-bottom: 4px; }
+  .soil-info .soil-detail { color: #ccc; line-height: 1.5; }
+
+  .kml-info {
+    background: rgba(255, 68, 68, 0.1); border-radius: 8px;
+    padding: 12px; margin-top: 8px; font-size: 13px;
+    border: 1px solid rgba(255, 68, 68, 0.3); display: none;
+  }
+  .kml-info.visible { display: block; }
+  .kml-info .kml-name { font-weight: 600; color: #ff6b6b; margin-bottom: 4px; }
+  .kml-area-badge {
+    display: inline-block; background: rgba(255,68,68,0.2);
+    color: #ff6b6b; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600; margin-top: 4px;
+  }
+
+  .legend-container { margin-top: 8px; max-height: 220px; overflow-y: auto; }
+  .legend-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
+  .legend-color {
+    width: 16px; height: 16px; border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.2); flex-shrink: 0;
+  }
+  .legend-gradient {
+    width: 100%; height: 16px; border-radius: 4px; margin: 6px 0 4px;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  .legend-gradient-labels {
+    display: flex; justify-content: space-between; font-size: 11px; color: #aaa;
+  }
+
+  .status-bar {
+    position: absolute; bottom: 12px; left: 12px; z-index: 1000;
+    background: rgba(26, 26, 46, 0.9); border-radius: 8px;
+    padding: 8px 14px; font-size: 12px; color: #999;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .status-bar span { color: #64ffda; }
+
+  .btn-clear {
+    background: rgba(255, 82, 82, 0.15); border: 1px solid rgba(255, 82, 82, 0.3);
+    color: #ff5252; padding: 6px 12px; border-radius: 6px;
+    cursor: pointer; font-size: 12px; margin-top: 8px; width: 100%; transition: all 0.2s;
+  }
+  .btn-clear:hover { background: rgba(255, 82, 82, 0.25); }
+
+  .map-source-info { font-size: 11px; color: #666; margin-top: 4px; }
+
+  /* KML label on map */
+  .kml-map-label {
+    background: rgba(220, 40, 40, 0.85); color: #fff;
+    padding: 3px 8px; border-radius: 4px; font-size: 12px;
+    font-weight: 600; white-space: nowrap;
+    border: 1.5px solid rgba(255,255,255,0.7);
+    box-shadow: 0 1px 6px rgba(0,0,0,0.4);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  }
+
+  .control-panel::-webkit-scrollbar { width: 4px; }
+  .control-panel::-webkit-scrollbar-track { background: transparent; }
+  .control-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="control-panel">
+  <h2 id="ui_title">ベトナム土壌図マップ</h2>
+
+  <!-- Language Switcher -->
+  <div class="lang-switcher">
+    <button class="lang-btn active" data-lang="ja">日本語</button>
+    <button class="lang-btn" data-lang="en">English</button>
+    <button class="lang-btn" data-lang="vi">Tiếng Việt</button>
+  </div>
+
+  <!-- KML Upload -->
+  <h3 id="ui_kmlSection">KMLファイル読込</h3>
+  <div class="upload-area" id="uploadArea">
+    <div class="icon">📁</div>
+    <p id="ui_uploadText">KMLファイルをドラッグ＆ドロップ<br>またはクリックして選択</p>
+    <input type="file" id="kmlInput" accept=".kml,.kmz">
+  </div>
+  <div class="kml-info" id="kmlInfo">
+    <div class="kml-name" id="kmlName"></div>
+    <div id="kmlDetail"></div>
+    <button class="btn-clear" id="clearKml">KMLをクリア</button>
+  </div>
+
+  <!-- Base Map -->
+  <h3 id="ui_basemapSection">ベースマップ</h3>
+  <select class="select-box" id="basemapSelect">
+    <option value="osm" id="opt_osm">OpenStreetMap（標準地図）</option>
+    <option value="satellite" id="opt_sat">Esri 衛星写真</option>
+    <option value="terrain" id="opt_topo">OpenTopoMap（地形図）</option>
+    <option value="dark" id="opt_dark">CartoDB ダークマップ</option>
+  </select>
+  <div class="map-source-info" id="mapSourceInfo">OpenStreetMap (openstreetmap.org)</div>
+
+  <!-- Soil Layer -->
+  <h3 id="ui_soilSection">土壌レイヤー</h3>
+  <div class="layer-radio active" data-layer="wrb">
+    <input type="radio" name="soilLayer" id="radioWRB" value="wrb" checked>
+    <label for="radioWRB" id="ui_labelWRB">WRB 土壌分類 (ISRIC SoilGrids)</label>
+  </div>
+  <div class="layer-radio" data-layer="ph">
+    <input type="radio" name="soilLayer" id="radioPH" value="ph">
+    <label for="radioPH" id="ui_labelPH">土壌pH (表層 0-5cm)</label>
+  </div>
+  <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+    <span style="font-size:12px; color:#888;" id="ui_opacity">透過度</span>
+    <input type="range" class="opacity-slider" id="soilOpacity" min="0" max="100" value="60" style="flex:1">
+  </div>
+
+  <!-- Soil Info -->
+  <div class="soil-info" id="soilInfo">
+    <div class="soil-name" id="soilName"></div>
+    <div class="soil-detail" id="soilDetail"></div>
+  </div>
+
+  <!-- Legend -->
+  <h3 id="legendTitle">WRB 土壌分類 凡例</h3>
+  <div class="legend-container" id="legend"></div>
+
+  <div style="margin-top:16px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.1); font-size:11px; color:#666;">
+    <strong style="color:#999;" id="ui_dataSource">データソース:</strong><br>
+    ISRIC SoilGrids 250m v2.0 (maps.isric.org)<br>
+    <span id="ui_clickHint">地図クリックで土壌情報を表示</span>
+  </div>
+</div>
+
+<div class="status-bar" id="statusBar">
+  <span id="ui_coordLabel">座標:</span> <span id="coords">--</span>
+</div>
+
+<script>
+// ============================================================
+// i18n — All UI strings in 3 languages
+// ============================================================
+const I18N = {
+  ja: {
+    title: 'ベトナム土壌図マップ',
+    kmlSection: 'KMLファイル読込',
+    uploadText: 'KMLファイルをドラッグ＆ドロップ<br>またはクリックして選択',
+    basemapSection: 'ベースマップ',
+    soilSection: '土壌レイヤー',
+    labelWRB: 'WRB 土壌分類 (ISRIC SoilGrids)',
+    labelPH: '土壌pH (表層 0-5cm)',
+    opacity: '透過度',
+    dataSource: 'データソース:',
+    clickHint: '地図クリックで土壌情報を表示',
+    coordLabel: '座標:',
+    clearKml: 'KMLをクリア',
+    loading: '読み込み中...',
+    noData: '該当データなし',
+    noSoil: '土壌情報を取得できませんでした',
+    seaOrOutside: '海域またはデータ範囲外',
+    checkLegend: '地図の色と凡例で確認してください。',
+    coord: '座標',
+    depth: '深度: 0-5cm',
+    feature: 'フィーチャー',
+    type: 'タイプ',
+    area: '面積',
+    soilClassValue: '土壌分類値',
+    // WRB
+    wrbLegendTitle: 'WRB 土壌分類 凡例',
+    wrbPrefix: 'WRB分類',
+    // pH
+    phLegendTitle: '土壌pH (0-5cm) 凡例',
+    phStrongAcid: '強酸性', phAcid: '酸性', phWeakAcid: '弱酸性',
+    phNeutral: '中性', phWeakAlk: '弱アルカリ性', phAlk: 'アルカリ性',
+    phMin: '3.5 (強酸性)', phMax: '9.0 (強アルカリ性)',
+    phRanges: [
+      '< 4.5 — 強酸性', '4.5–5.5 — 酸性', '5.5–6.5 — 弱酸性',
+      '6.5–7.5 — 中性', '7.5–8.5 — 弱アルカリ性', '> 8.5 — アルカリ性'
+    ],
+    // Basemap options
+    optOsm: 'OpenStreetMap（標準地図）', optSat: 'Esri 衛星写真',
+    optTopo: 'OpenTopoMap（地形図）', optDark: 'CartoDB ダークマップ',
+    // WRB names
+    wrb: {
+      AC: 'アクリソル（強酸性土壌）', AL: 'アリソル（酸性土壌）',
+      AN: 'アンドソル（火山灰土壌）', AR: 'アレノソル（砂質土壌）',
+      CL: 'カルシソル（石灰質土壌）', CM: 'カンビソル（褐色土壌）',
+      CH: 'チェルノーゼム（黒土）', FL: 'フルビソル（沖積土壌）',
+      FR: 'フェラルソル（ラテライト）', GL: 'グライソル（グライ土壌）',
+      HS: 'ヒストソル（泥炭土壌）', KS: 'カスタノーゼム（栗色土）',
+      LP: 'レプトソル（薄層土壌）', LX: 'リキシソル（粘土集積土）',
+      LV: 'ルビソル（粘土溶脱土）', NT: 'ニティソル（赤色粘土土壌）',
+      PH: 'フェオゼム（暗色土壌）', PL: 'プラノソル（漂白土壌）',
+      PT: 'プリントソル（硬盤土壌）', RG: 'レゴソル（未熟土壌）',
+      SC: 'ソロンチャク（塩類土壌）', SN: 'ソロネッツ（ナトリウム土）',
+      UM: 'ウンブリソル（暗色酸性土）', VR: 'バーティソル（膨張土壌）',
+    }
+  },
+  en: {
+    title: 'Vietnam Soil Map',
+    kmlSection: 'Load KML File',
+    uploadText: 'Drag & drop a KML file<br>or click to select',
+    basemapSection: 'Base Map',
+    soilSection: 'Soil Layer',
+    labelWRB: 'WRB Soil Classification (ISRIC SoilGrids)',
+    labelPH: 'Soil pH (Surface 0-5cm)',
+    opacity: 'Opacity',
+    dataSource: 'Data source:',
+    clickHint: 'Click on the map to view soil info',
+    coordLabel: 'Coords:',
+    clearKml: 'Clear KML',
+    loading: 'Loading...',
+    noData: 'No data available',
+    noSoil: 'Could not retrieve soil info',
+    seaOrOutside: 'Sea or outside data range',
+    checkLegend: 'Check map colors and legend.',
+    coord: 'Coords',
+    depth: 'Depth: 0-5cm',
+    feature: 'Features',
+    type: 'Type',
+    area: 'Area',
+    soilClassValue: 'Soil class value',
+    wrbLegendTitle: 'WRB Soil Classification Legend',
+    wrbPrefix: 'WRB Class',
+    phLegendTitle: 'Soil pH (0-5cm) Legend',
+    phStrongAcid: 'Strongly acidic', phAcid: 'Acidic', phWeakAcid: 'Slightly acidic',
+    phNeutral: 'Neutral', phWeakAlk: 'Slightly alkaline', phAlk: 'Alkaline',
+    phMin: '3.5 (Strongly acidic)', phMax: '9.0 (Strongly alkaline)',
+    phRanges: [
+      '< 4.5 — Strongly acidic', '4.5–5.5 — Acidic', '5.5–6.5 — Slightly acidic',
+      '6.5–7.5 — Neutral', '7.5–8.5 — Slightly alkaline', '> 8.5 — Alkaline'
+    ],
+    optOsm: 'OpenStreetMap (Standard)', optSat: 'Esri Satellite',
+    optTopo: 'OpenTopoMap (Terrain)', optDark: 'CartoDB Dark',
+    wrb: {
+      AC: 'Acrisols (Strongly acidic)', AL: 'Alisols (Acidic)',
+      AN: 'Andosols (Volcanic ash)', AR: 'Arenosols (Sandy)',
+      CL: 'Calcisols (Calcareous)', CM: 'Cambisols (Brown)',
+      CH: 'Chernozems (Black earth)', FL: 'Fluvisols (Alluvial)',
+      FR: 'Ferralsols (Laterite)', GL: 'Gleysols (Gley)',
+      HS: 'Histosols (Peat)', KS: 'Kastanozems (Chestnut)',
+      LP: 'Leptosols (Shallow)', LX: 'Lixisols (Clay accumulation)',
+      LV: 'Luvisols (Clay leaching)', NT: 'Nitisols (Red clay)',
+      PH: 'Phaeozems (Dark)', PL: 'Planosols (Bleached)',
+      PT: 'Plinthosols (Hardpan)', RG: 'Regosols (Immature)',
+      SC: 'Solonchaks (Saline)', SN: 'Solonetz (Sodic)',
+      UM: 'Umbrisols (Dark acidic)', VR: 'Vertisols (Swelling)',
+    }
+  },
+  vi: {
+    title: 'Bản đồ Đất Việt Nam',
+    kmlSection: 'Tải tệp KML',
+    uploadText: 'Kéo thả tệp KML vào đây<br>hoặc nhấp để chọn',
+    basemapSection: 'Bản đồ nền',
+    soilSection: 'Lớp đất',
+    labelWRB: 'Phân loại đất WRB (ISRIC SoilGrids)',
+    labelPH: 'Độ pH đất (Bề mặt 0-5cm)',
+    opacity: 'Độ trong suốt',
+    dataSource: 'Nguồn dữ liệu:',
+    clickHint: 'Nhấp vào bản đồ để xem thông tin đất',
+    coordLabel: 'Tọa độ:',
+    clearKml: 'Xóa KML',
+    loading: 'Đang tải...',
+    noData: 'Không có dữ liệu',
+    noSoil: 'Không thể lấy thông tin đất',
+    seaOrOutside: 'Biển hoặc ngoài phạm vi dữ liệu',
+    checkLegend: 'Kiểm tra màu sắc và chú giải trên bản đồ.',
+    coord: 'Tọa độ',
+    depth: 'Độ sâu: 0-5cm',
+    feature: 'Đối tượng',
+    type: 'Loại',
+    area: 'Diện tích',
+    soilClassValue: 'Giá trị phân loại đất',
+    wrbLegendTitle: 'Chú giải Phân loại đất WRB',
+    wrbPrefix: 'Phân loại WRB',
+    phLegendTitle: 'Chú giải Độ pH đất (0-5cm)',
+    phStrongAcid: 'Axit mạnh', phAcid: 'Axit', phWeakAcid: 'Hơi axit',
+    phNeutral: 'Trung tính', phWeakAlk: 'Hơi kiềm', phAlk: 'Kiềm',
+    phMin: '3.5 (Axit mạnh)', phMax: '9.0 (Kiềm mạnh)',
+    phRanges: [
+      '< 4.5 — Axit mạnh', '4.5–5.5 — Axit', '5.5–6.5 — Hơi axit',
+      '6.5–7.5 — Trung tính', '7.5–8.5 — Hơi kiềm', '> 8.5 — Kiềm'
+    ],
+    optOsm: 'OpenStreetMap (Tiêu chuẩn)', optSat: 'Esri Ảnh vệ tinh',
+    optTopo: 'OpenTopoMap (Địa hình)', optDark: 'CartoDB Tối',
+    wrb: {
+      AC: 'Acrisols (Đất chua mạnh)', AL: 'Alisols (Đất chua)',
+      AN: 'Andosols (Đất tro núi lửa)', AR: 'Arenosols (Đất cát)',
+      CL: 'Calcisols (Đất vôi)', CM: 'Cambisols (Đất nâu)',
+      CH: 'Chernozems (Đất đen)', FL: 'Fluvisols (Đất phù sa)',
+      FR: 'Ferralsols (Đất feralit)', GL: 'Gleysols (Đất glây)',
+      HS: 'Histosols (Đất than bùn)', KS: 'Kastanozems (Đất hạt dẻ)',
+      LP: 'Leptosols (Đất mỏng)', LX: 'Lixisols (Đất tích sét)',
+      LV: 'Luvisols (Đất rửa trôi sét)', NT: 'Nitisols (Đất sét đỏ)',
+      PH: 'Phaeozems (Đất sẫm)', PL: 'Planosols (Đất bạc màu)',
+      PT: 'Plinthosols (Đất kết von)', RG: 'Regosols (Đất non)',
+      SC: 'Solonchaks (Đất mặn)', SN: 'Solonetz (Đất kiềm)',
+      UM: 'Umbrisols (Đất chua sẫm)', VR: 'Vertisols (Đất trương nở)',
+    }
+  }
+};
+
+let currentLang = 'ja';
+function t(key) { return I18N[currentLang][key] || I18N['en'][key] || key; }
+function tWrb(code) { return (I18N[currentLang].wrb && I18N[currentLang].wrb[code]) || code; }
+
+// ---- WRB base data (code + color only) ----
+const WRB_CODES = [
+  { code: 'AC', name: 'Acrisols',    color: '#ffff00' },
+  { code: 'AL', name: 'Alisols',     color: '#f5f57a' },
+  { code: 'AN', name: 'Andosols',    color: '#d2b48c' },
+  { code: 'AR', name: 'Arenosols',   color: '#f5deb3' },
+  { code: 'CL', name: 'Calcisols',   color: '#dcdcdc' },
+  { code: 'CM', name: 'Cambisols',   color: '#8fbc8f' },
+  { code: 'CH', name: 'Chernozems',  color: '#2f4f4f' },
+  { code: 'FL', name: 'Fluvisols',   color: '#87ceeb' },
+  { code: 'FR', name: 'Ferralsols',  color: '#cd5c5c' },
+  { code: 'GL', name: 'Gleysols',    color: '#4682b4' },
+  { code: 'HS', name: 'Histosols',   color: '#556b2f' },
+  { code: 'KS', name: 'Kastanozems', color: '#8b4513' },
+  { code: 'LP', name: 'Leptosols',   color: '#c0c0c0' },
+  { code: 'LX', name: 'Lixisols',    color: '#daa520' },
+  { code: 'LV', name: 'Luvisols',    color: '#ffa07a' },
+  { code: 'NT', name: 'Nitisols',    color: '#b22222' },
+  { code: 'PH', name: 'Phaeozems',   color: '#696969' },
+  { code: 'PL', name: 'Planosols',   color: '#b0c4de' },
+  { code: 'PT', name: 'Plinthosols', color: '#dc143c' },
+  { code: 'RG', name: 'Regosols',    color: '#d3d3d3' },
+  { code: 'SC', name: 'Solonchaks',  color: '#ffffff' },
+  { code: 'SN', name: 'Solonetz',    color: '#e0e0e0' },
+  { code: 'UM', name: 'Umbrisols',   color: '#708090' },
+  { code: 'VR', name: 'Vertisols',   color: '#006400' },
+];
+
+const PH_COLORS = ['#d73027','#f46d43','#fdae61','#fee08b','#d9ef8b','#1a9850'];
+
+// ---- Base Maps ----
+const BASEMAPS = {
+  osm:       { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+               attr: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' },
+  satellite: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+               attr: '&copy; <a href="https://www.esri.com">Esri</a>' },
+  terrain:   { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+               attr: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a>' },
+  dark:      { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+               attr: '&copy; <a href="https://carto.com">CARTO</a>' }
+};
+
+// ---- Soil WMS Layers ----
+const SOIL_LAYERS = {
+  wrb: L.tileLayer.wms('https://maps.isric.org/mapserv?map=/map/wrb.map', {
+    layers: 'MostProbable', format: 'image/png', transparent: true, opacity: 0.6,
+    attribution: 'SoilGrids &copy; ISRIC'
+  }),
+  ph: L.tileLayer.wms('https://maps.isric.org/mapserv?map=/map/phh2o.map', {
+    layers: 'phh2o_0-5cm_mean', format: 'image/png', transparent: true, opacity: 0.6,
+    attribution: 'SoilGrids &copy; ISRIC'
+  })
+};
+
+// ============================================================
+// Map Init
+// ============================================================
+const map = L.map('map', {
+  center: [16.0, 107.5], zoom: 6, zoomControl: false,
+  maxBounds: [[7, 100], [24, 115]], minZoom: 5
+});
+L.control.zoom({ position: 'topleft' }).addTo(map);
+
+let currentBaseLayer = L.tileLayer(BASEMAPS.osm.url, {
+  attribution: BASEMAPS.osm.attr, maxZoom: 18
+}).addTo(map);
+
+let activeSoilKey = 'wrb';
+SOIL_LAYERS.wrb.addTo(map);
+
+// ============================================================
+// UI Update — apply current language to all elements
+// ============================================================
+function applyLanguage() {
+  document.getElementById('ui_title').textContent = t('title');
+  document.getElementById('ui_kmlSection').textContent = t('kmlSection');
+  document.getElementById('ui_uploadText').innerHTML = t('uploadText');
+  document.getElementById('ui_basemapSection').textContent = t('basemapSection');
+  document.getElementById('ui_soilSection').textContent = t('soilSection');
+  document.getElementById('ui_labelWRB').textContent = t('labelWRB');
+  document.getElementById('ui_labelPH').textContent = t('labelPH');
+  document.getElementById('ui_opacity').textContent = t('opacity');
+  document.getElementById('ui_dataSource').textContent = t('dataSource');
+  document.getElementById('ui_clickHint').textContent = t('clickHint');
+  document.getElementById('ui_coordLabel').textContent = t('coordLabel');
+  document.getElementById('clearKml').textContent = t('clearKml');
+  document.getElementById('opt_osm').textContent = t('optOsm');
+  document.getElementById('opt_sat').textContent = t('optSat');
+  document.getElementById('opt_topo').textContent = t('optTopo');
+  document.getElementById('opt_dark').textContent = t('optDark');
+  document.title = t('title');
+  renderLegend(activeSoilKey);
+}
+
+// Language switcher
+document.querySelectorAll('.lang-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentLang = btn.dataset.lang;
+    document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyLanguage();
+  });
+});
+
+// ============================================================
+// Base map switcher
+// ============================================================
+document.getElementById('basemapSelect').addEventListener('change', (e) => {
+  const def = BASEMAPS[e.target.value];
+  map.removeLayer(currentBaseLayer);
+  currentBaseLayer = L.tileLayer(def.url, { attribution: def.attr, maxZoom: 18 }).addTo(map);
+  currentBaseLayer.bringToBack();
+});
+
+// ============================================================
+// Soil Layer Switch + Legend
+// ============================================================
+function renderLegend(key) {
+  const container = document.getElementById('legend');
+  const titleEl = document.getElementById('legendTitle');
+  container.innerHTML = '';
+
+  if (key === 'wrb') {
+    titleEl.textContent = t('wrbLegendTitle');
+    WRB_CODES.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'legend-item';
+      el.innerHTML = `<div class="legend-color" style="background:${item.color}"></div><span>${tWrb(item.code)}</span>`;
+      container.appendChild(el);
+    });
+  } else if (key === 'ph') {
+    titleEl.textContent = t('phLegendTitle');
+    const bar = document.createElement('div');
+    bar.className = 'legend-gradient';
+    bar.style.background = 'linear-gradient(to right, #d73027, #f46d43, #fdae61, #fee08b, #d9ef8b, #1a9850)';
+    container.appendChild(bar);
+    const labels = document.createElement('div');
+    labels.className = 'legend-gradient-labels';
+    labels.innerHTML = `<span>${t('phMin')}</span><span>${t('phMax')}</span>`;
+    container.appendChild(labels);
+    const ranges = t('phRanges');
+    ranges.forEach((r, i) => {
+      const el = document.createElement('div');
+      el.className = 'legend-item';
+      el.innerHTML = `<div class="legend-color" style="background:${PH_COLORS[i]}"></div><span>${r}</span>`;
+      container.appendChild(el);
+    });
+  }
+}
+
+function switchSoilLayer(key) {
+  if (SOIL_LAYERS[activeSoilKey]) map.removeLayer(SOIL_LAYERS[activeSoilKey]);
+  activeSoilKey = key;
+  const layer = SOIL_LAYERS[key];
+  layer.addTo(map);
+  layer.setOpacity(document.getElementById('soilOpacity').value / 100);
+  document.querySelectorAll('.layer-radio').forEach(el => {
+    el.classList.toggle('active', el.dataset.layer === key);
+  });
+  renderLegend(key);
+}
+
+document.querySelectorAll('input[name="soilLayer"]').forEach(radio => {
+  radio.addEventListener('change', (e) => switchSoilLayer(e.target.value));
+});
+document.getElementById('soilOpacity').addEventListener('input', (e) => {
+  SOIL_LAYERS[activeSoilKey].setOpacity(e.target.value / 100);
+});
+
+renderLegend('wrb');
+
+// ============================================================
+// Coordinate Display
+// ============================================================
+map.on('mousemove', (e) => {
+  document.getElementById('coords').textContent =
+    `${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
+});
+
+// ============================================================
+// Map Click → Soil Info
+// ============================================================
+map.on('click', async (e) => {
+  const { lat, lng } = e.latlng;
+  const soilInfoEl = document.getElementById('soilInfo');
+  const soilNameEl = document.getElementById('soilName');
+  const soilDetailEl = document.getElementById('soilDetail');
+
+  soilNameEl.textContent = t('loading');
+  soilDetailEl.textContent = '';
+  soilInfoEl.classList.add('visible');
+
+  try {
+    const size = map.getSize();
+    const bounds = map.getBounds();
+    const sw = bounds.getSouthWest();
+    const ne = bounds.getNorthEast();
+    const point = map.latLngToContainerPoint(e.latlng);
+
+    const cfg = {
+      wrb: { url: 'https://maps.isric.org/mapserv?map=/map/wrb.map', layer: 'MostProbable' },
+      ph:  { url: 'https://maps.isric.org/mapserv?map=/map/phh2o.map', layer: 'phh2o_0-5cm_mean' }
+    }[activeSoilKey];
+
+    const params = new URLSearchParams({
+      SERVICE: 'WMS', VERSION: '1.1.1', REQUEST: 'GetFeatureInfo',
+      LAYERS: cfg.layer, QUERY_LAYERS: cfg.layer,
+      INFO_FORMAT: 'application/json', SRS: 'EPSG:4326',
+      WIDTH: size.x, HEIGHT: size.y,
+      BBOX: `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`,
+      X: Math.round(point.x), Y: Math.round(point.y)
+    });
+
+    const resp = await fetch(`${cfg.url}&${params.toString()}`);
+    if (!resp.ok) throw new Error('WMS error');
+    const data = await resp.json();
+
+    if (data.features && data.features.length > 0) {
+      const props = data.features[0].properties;
+      const value = props.value || props[cfg.layer] || Object.values(props)[0];
+
+      if (activeSoilKey === 'wrb') {
+        const cls = WRB_CODES.find(c =>
+          String(value).toUpperCase().includes(c.code) ||
+          String(value).toLowerCase().includes(c.name.toLowerCase())
+        );
+        if (cls) {
+          soilNameEl.textContent = tWrb(cls.code);
+          soilDetailEl.innerHTML = `${t('wrbPrefix')}: <strong>${cls.name} (${cls.code})</strong><br>${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
+        } else {
+          soilNameEl.textContent = `${t('soilClassValue')}: ${value}`;
+          soilDetailEl.innerHTML = `${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
+        }
+      } else {
+        const phVal = (Number(value) / 10).toFixed(1);
+        let desc = '';
+        if (phVal < 4.5) desc = t('phStrongAcid');
+        else if (phVal < 5.5) desc = t('phAcid');
+        else if (phVal < 6.5) desc = t('phWeakAcid');
+        else if (phVal < 7.5) desc = t('phNeutral');
+        else if (phVal < 8.5) desc = t('phWeakAlk');
+        else desc = t('phAlk');
+        soilNameEl.textContent = `pH ${phVal} (${desc})`;
+        soilDetailEl.innerHTML = `${t('depth')}<br>${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
+      }
+    } else {
+      soilNameEl.textContent = t('noData');
+      soilDetailEl.textContent = `${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`;
+    }
+  } catch (err) {
+    soilNameEl.textContent = t('noSoil');
+    soilDetailEl.innerHTML = `${t('coord')}: ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E<br>${t('checkLegend')}`;
+  }
+});
+
+// ============================================================
+// KML — boundary line + name label on map
+// ============================================================
+let kmlLayer = null;
+let kmlLabels = [];
+
+function clearKML() {
+  if (kmlLayer) { map.removeLayer(kmlLayer); kmlLayer = null; }
+  kmlLabels.forEach(l => map.removeLayer(l));
+  kmlLabels = [];
+}
+
+function featureCentroid(feature) {
+  const coords = [];
+  function collect(c) { coords.push([c[1], c[0]]); }
+  function walk(g) {
+    switch(g.type) {
+      case 'Point': collect(g.coordinates); break;
+      case 'MultiPoint': case 'LineString': g.coordinates.forEach(collect); break;
+      case 'MultiLineString': case 'Polygon': g.coordinates.forEach(r => r.forEach(collect)); break;
+      case 'MultiPolygon': g.coordinates.forEach(p => p.forEach(r => r.forEach(collect))); break;
+    }
+  }
+  if (feature.geometry) walk(feature.geometry);
+  if (coords.length === 0) return null;
+  const lat = coords.reduce((s, c) => s + c[0], 0) / coords.length;
+  const lng = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+  return [lat, lng];
+}
+
+function approxAreaKm2(geojson) {
+  let total = 0;
+  geojson.features.forEach(f => {
+    if (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon') {
+      const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+      polys.forEach(poly => poly.forEach(ring => {
+        let a = 0;
+        for (let i = 0; i < ring.length - 1; i++) {
+          a += (ring[i+1][0] - ring[i][0]) * (ring[i+1][1] + ring[i][1]);
+        }
+        const avgLat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+        total += Math.abs(a / 2) * 111.32 * 111.32 * Math.cos(avgLat * Math.PI / 180);
+      }));
+    }
+  });
+  return total;
+}
+
+function loadKML(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const parser = new DOMParser();
+      const kml = parser.parseFromString(e.target.result, 'text/xml');
+      if (kml.querySelector('parsererror')) { alert('Invalid KML'); return; }
+      const geojson = toGeoJSON.kml(kml);
+      if (!geojson.features || geojson.features.length === 0) { alert('No geometry in KML'); return; }
+
+      clearKML();
+
+      // Boundary line only
+      kmlLayer = L.geoJSON(geojson, {
+        style: {
+          color: '#ff2222', weight: 3, fillOpacity: 0, opacity: 0.9,
+          lineCap: 'round', lineJoin: 'round'
+        },
+        pointToLayer: (f, ll) => L.circleMarker(ll, {
+          radius: 6, fillColor: '#ff3333', color: '#fff', weight: 2, fillOpacity: 0.9
+        }),
+        onEachFeature: (feature, layer) => {
+          const props = feature.properties || {};
+          if (props.name || props.description) {
+            let html = '<div style="max-width:260px">';
+            if (props.name) html += `<strong>${props.name}</strong><br>`;
+            if (props.description) html += `<span style="color:#555;font-size:12px">${props.description}</span>`;
+            html += '</div>';
+            layer.bindPopup(html);
+          }
+        }
+      }).addTo(map);
+
+      // Name labels at centroid of each feature
+      geojson.features.forEach((feature, i) => {
+        const name = (feature.properties && feature.properties.name)
+          ? feature.properties.name : `Area ${i + 1}`;
+        const centroid = featureCentroid(feature);
+        if (centroid) {
+          const label = L.marker(centroid, {
+            icon: L.divIcon({
+              className: '',
+              html: `<div class="kml-map-label">${name}</div>`,
+              iconSize: null,
+              iconAnchor: [0, 0]
+            }),
+            interactive: false,
+            zIndexOffset: 1000
+          }).addTo(map);
+          kmlLabels.push(label);
+        }
+      });
+
+      // Zoom
+      const bounds = kmlLayer.getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [60, 60] });
+
+      // Info panel
+      const featureCount = geojson.features.length;
+      const types = [...new Set(geojson.features.map(f => f.geometry.type))];
+      const area = approxAreaKm2(geojson);
+      const areaStr = area > 0 ? (area > 1 ? `${area.toFixed(1)} km²` : `${(area*1e6).toFixed(0)} m²`) : '';
+
+      document.getElementById('kmlName').textContent = file.name;
+      document.getElementById('kmlDetail').innerHTML = `
+        ${t('feature')}: ${featureCount} | ${t('type')}: ${types.join(', ')}
+        ${areaStr ? `<br><span class="kml-area-badge">${t('area')} ≈ ${areaStr}</span>` : ''}
+      `;
+      document.getElementById('kmlInfo').classList.add('visible');
+
+    } catch (err) {
+      console.error(err);
+      alert('KML load failed: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// Upload events
+const uploadArea = document.getElementById('uploadArea');
+const kmlInput = document.getElementById('kmlInput');
+uploadArea.addEventListener('click', () => kmlInput.click());
+uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', (e) => {
+  e.preventDefault(); uploadArea.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && (file.name.endsWith('.kml') || file.name.endsWith('.kmz'))) loadKML(file);
+  else alert('Please select a KML file.');
+});
+kmlInput.addEventListener('change', (e) => { if (e.target.files[0]) loadKML(e.target.files[0]); });
+
+document.getElementById('clearKml').addEventListener('click', () => {
+  clearKML();
+  document.getElementById('kmlInfo').classList.remove('visible');
+  kmlInput.value = '';
+  map.setView([16.0, 107.5], 6);
+});
+</script>
+</body>
+</html>
